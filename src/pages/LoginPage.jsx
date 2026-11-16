@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { ArrowRightIcon } from '@phosphor-icons/react'
-import heroImg from '../assets/hero.png'
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from '../components/ui/field'
@@ -68,11 +66,6 @@ function LoginPage() {
               Securely monitor your device and control each relay in real time.
             </p>
           </div>
-          <img
-            src={heroImg}
-            alt="Layered relay module illustration"
-            className="mx-auto w-full max-w-sm"
-          />
         </section>
 
         <section className="flex items-center p-8 sm:p-10">
