@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { onValue, ref, set } from 'firebase/database'
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert'
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import {
   Card,
   CardContent,
@@ -9,11 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from '../components/ui/card'
+import { Input } from '../components/ui/input'
 import { Skeleton } from '../components/ui/skeleton'
 import { Toggle } from '../components/ui/toggle'
 import { db } from '../firebase'
 import { useAuth } from '../contexts/auth-context'
-import { Power } from 'lucide-react'
+import { Check, Menu, Pencil, Power, X } from 'lucide-react'
 import { cn } from '../lib/utils';
 
 
@@ -24,8 +26,38 @@ const RELAYS = [
   { id: 'r4', name: 'Relay 4', pin: 'GPIO 26' },
 ]
 
+const RELAY_NAME_MAX_LENGTH = 40
+
+const DEVICE_EMOJIS = [
+  { emoji: '💡', label: 'Light' },
+  { emoji: '🌀', label: 'Fan' },
+  { emoji: '💧', label: 'Pump' },
+  { emoji: '🚿', label: 'Water' },
+  { emoji: '🔌', label: 'Plug' },
+  { emoji: '❄️', label: 'Air conditioner' },
+  { emoji: '🔥', label: 'Heater' },
+  { emoji: '📺', label: 'TV' },
+  { emoji: '🔊', label: 'Speaker' },
+  { emoji: '🚪', label: 'Door' },
+  { emoji: '🔔', label: 'Alarm' },
+  { emoji: '📷', label: 'Camera' },
+  { emoji: '🌱', label: 'Garden' },
+]
+
 function isRelayOn(value) {
   return value === true || value === 1 || value === 'true'
+}
+
+function relayDisplayName(relay, relayNames) {
+  const custom =
+    typeof relayNames?.[relay.id] === 'string' ? relayNames[relay.id].trim() : ''
+  return custom || relay.name
+}
+
+function relayEmoji(relayId, relayNames) {
+  const value = relayNames?.emoji?.[relayId]
+  if (typeof value !== 'string') return ''
+  return DEVICE_EMOJIS.some((item) => item.emoji === value) ? value : ''
 }
 
 function formatUptime(seconds) {
@@ -72,22 +104,11 @@ function DashboardSkeleton() {
           <Skeleton aria-hidden="true" className="h-9 w-64 max-w-full" />
           <Skeleton aria-hidden="true" className="h-4 w-full max-w-sm" />
         </div>
-        <Skeleton aria-hidden="true" className="h-6 w-36" />
+        <div className="flex items-center gap-2">
+          <Skeleton aria-hidden="true" className="size-8" />
+          <Skeleton aria-hidden="true" className="h-6 w-36" />
+        </div>
       </header>
-
-      <section
-        aria-hidden="true"
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        {Array.from({ length: 4 }, (_, index) => (
-          <Card key={index}>
-            <CardHeader className="gap-3">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-6 w-28" />
-            </CardHeader>
-          </Card>
-        ))}
-      </section>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
@@ -123,6 +144,12 @@ function DashboardSkeleton() {
 function DashboardPage() {
   const { user } = useAuth()
   const [relayState, setRelayState] = useState({})
+  const [relayNames, setRelayNames] = useState({})
+  const [editingRelayId, setEditingRelayId] = useState(null)
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingNameId, setSavingNameId] = useState(null)
+  const [emojiPickerRelayId, setEmojiPickerRelayId] = useState(null)
+  const [savingEmojiId, setSavingEmojiId] = useState(null)
   const [espStatus, setEspStatus] = useState({
     online: false,
     ip: '—',
@@ -135,11 +162,13 @@ function DashboardPage() {
   const [hasLoadedStatus, setHasLoadedStatus] = useState(false)
   const [listenerErrors, setListenerErrors] = useState({})
   const [actionError, setActionError] = useState('')
+  const [statusOpen, setStatusOpen] = useState(false)
   const dashboardError = actionError || Object.values(listenerErrors).find(Boolean)
 
   useEffect(() => {
     const connectionRef = ref(db, '.info/connected')
     const relayRef = ref(db, 'relays')
+    const namesRef = ref(db, 'config/relayNames')
     const statusRef = ref(db, 'status/esp32')
 
     const unsubscribeConnection = onValue(
@@ -178,6 +207,24 @@ function DashboardPage() {
       }
     )
 
+    const unsubscribeNames = onValue(
+      namesRef,
+      (snapshot) => {
+        setRelayNames(snapshot.val() || {})
+        setListenerErrors((current) => ({ ...current, names: '' }))
+      },
+      (error) => {
+        console.error('Relay name listener failed:', error)
+        setListenerErrors((current) => ({
+          ...current,
+          names:
+            error.code === 'PERMISSION_DENIED'
+              ? 'Database access was denied. Check your Realtime Database rules and signed-in account.'
+              : 'Could not load relay names from the database.',
+        }))
+      }
+    )
+
     const unsubscribeStatus = onValue(
       statusRef,
       (snapshot) => {
@@ -206,12 +253,68 @@ function DashboardPage() {
     return () => {
       unsubscribeConnection()
       unsubscribeRelays()
+      unsubscribeNames()
       unsubscribeStatus()
     }
   }, [])
 
   if (!hasLoadedRelays || !hasLoadedStatus) {
     return <DashboardSkeleton />
+  }
+
+  const startRename = (relay) => {
+    setActionError('')
+    setEditingRelayId(relay.id)
+    setNameDraft(relayDisplayName(relay, relayNames))
+  }
+
+  const cancelRename = () => {
+    setEditingRelayId(null)
+    setNameDraft('')
+  }
+
+  const saveRelayName = async (relay) => {
+    if (!isFirebaseConnected || savingNameId) return
+
+    const trimmed = nameDraft.trim().slice(0, RELAY_NAME_MAX_LENGTH)
+    setActionError('')
+    setSavingNameId(relay.id)
+
+    try {
+      await set(ref(db, `config/relayNames/${relay.id}`), trimmed || null)
+      setEditingRelayId(null)
+      setNameDraft('')
+    } catch (error) {
+      console.error(`Failed to rename ${relay.id}:`, error)
+      setActionError(
+        error.code === 'PERMISSION_DENIED'
+          ? 'Renaming was denied. Allow writes to config/relayNames in your Realtime Database rules.'
+          : 'Could not save the relay name. Check the connection and try again.'
+      )
+    } finally {
+      setSavingNameId(null)
+    }
+  }
+
+  const saveRelayEmoji = async (relay, emoji) => {
+    if (!isFirebaseConnected || savingEmojiId) return
+
+    setActionError('')
+    setSavingEmojiId(relay.id)
+
+    try {
+      await set(ref(db, `config/relayNames/emoji/${relay.id}`), emoji || null)
+      setEmojiPickerRelayId(null)
+    } catch (error) {
+      console.error(`Failed to set emoji for ${relay.id}:`, error)
+      setActionError(
+        error.code === 'PERMISSION_DENIED'
+          ? 'Saving the emoji was denied. Allow writes to config/relayNames in your Realtime Database rules.'
+          : 'Could not save the device emoji. Check the connection and try again.'
+      )
+    } finally {
+      setSavingEmojiId(null)
+    }
   }
 
   const handleRelayToggle = async (relayId, enabled) => {
@@ -250,7 +353,19 @@ function DashboardPage() {
             Monitor your ESP32 and control its connected relays.
           </p>
         </div>
-        <Badge
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={statusOpen ? 'Hide device status' : 'Show device status'}
+            aria-expanded={statusOpen}
+            aria-controls="device-status"
+            onClick={() => setStatusOpen((open) => !open)}
+          >
+            {statusOpen ? <X /> : <Menu />}
+          </Button>
+          <Badge
           variant={isFirebaseConnected ? 'secondary' : 'outline'}
           aria-live="polite"
         >
@@ -270,7 +385,8 @@ function DashboardPage() {
             : isFirebaseConnected
               ? 'Database connected'
               : 'Database offline'}
-        </Badge>
+          </Badge>
+        </div>
       </header>
 
       {dashboardError ? (
@@ -280,7 +396,9 @@ function DashboardPage() {
         </Alert>
       ) : null}
 
+      {statusOpen ? (
       <section
+        id="device-status"
         aria-label="ESP32 status"
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
@@ -305,6 +423,7 @@ function DashboardPage() {
           {espStatus.rssi === '—' ? '—' : `${espStatus.rssi} dBm`}
         </StatusCard>
       </section>
+      ) : null}
 
       <section aria-labelledby="relays-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
@@ -320,12 +439,76 @@ function DashboardPage() {
           {RELAYS.map((relay) => {
             const isOn = isRelayOn(relayState[relay.id])
             const isPending = pendingRelays.includes(relay.id)
+            const displayName = relayDisplayName(relay, relayNames)
+            const emoji = relayEmoji(relay.id, relayNames)
+            const isEditing = editingRelayId === relay.id
+            const isSavingName = savingNameId === relay.id
+            const isPickingEmoji = emojiPickerRelayId === relay.id
+            const isSavingEmoji = savingEmojiId === relay.id
 
             return (
               <Card key={relay.id}>
                 <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <CardDescription>{relay.name}</CardDescription>
+                  <div className="flex items-center justify-between gap-2">
+                    {isEditing ? (
+                      <form
+                        className="flex min-w-0 flex-1 items-center gap-1"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          saveRelayName(relay)
+                        }}
+                      >
+                        <Input
+                          value={nameDraft}
+                          maxLength={RELAY_NAME_MAX_LENGTH}
+                          autoFocus
+                          aria-label={`Name for ${relay.pin}`}
+                          disabled={isSavingName || !isFirebaseConnected}
+                          onChange={(event) => setNameDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              event.preventDefault()
+                              cancelRename()
+                            }
+                          }}
+                        />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label="Save relay name"
+                          disabled={isSavingName || !isFirebaseConnected}
+                        >
+                          <Check />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label="Cancel rename"
+                          disabled={isSavingName}
+                          onClick={cancelRename}
+                        >
+                          <X />
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="flex min-w-0 items-center gap-1">
+                        <CardDescription className="truncate">
+                          {displayName}
+                        </CardDescription>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`Rename ${displayName}`}
+                          disabled={!isFirebaseConnected}
+                          onClick={() => startRename(relay)}
+                        >
+                          <Pencil />
+                        </Button>
+                      </div>
+                    )}
                     <Badge className={
                       isOn ? 'border-lime-500/30 bg-lime-500/10 text-lime-600 dark:text-lime-400'
                         : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
@@ -336,8 +519,62 @@ function DashboardPage() {
                   </div>
 
 
+                  {isPickingEmoji ? (
+                    <div className="grid grid-cols-7 gap-1" role="listbox" aria-label={`Emoji for ${displayName}`}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label="No emoji"
+                        disabled={isSavingEmoji}
+                        onClick={() => saveRelayEmoji(relay, '')}
+                      >
+                        <X />
+                      </Button>
+                      {DEVICE_EMOJIS.map((item) => (
+                        <Button
+                          key={item.label}
+                          type="button"
+                          variant={emoji === item.emoji ? 'secondary' : 'ghost'}
+                          size="icon-sm"
+                          role="option"
+                          aria-selected={emoji === item.emoji}
+                          aria-label={item.label}
+                          title={item.label}
+                          disabled={isSavingEmoji || !isFirebaseConnected}
+                          onClick={() => saveRelayEmoji(relay, item.emoji)}
+                          className="text-base"
+                        >
+                          {item.emoji}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+
                   <div className="flex items-center justify-between gap-4">
-                    <CardTitle className="text-lg">{relay.pin}</CardTitle>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label={
+                          emoji
+                            ? `Change emoji for ${displayName}`
+                            : `Choose emoji for ${displayName}`
+                        }
+                        aria-expanded={isPickingEmoji}
+                        disabled={!isFirebaseConnected || isSavingEmoji}
+                        onClick={() =>
+                          setEmojiPickerRelayId((current) =>
+                            current === relay.id ? null : relay.id
+                          )
+                        }
+                        className="text-lg"
+                      >
+                        {emoji || '＋'}
+                      </Button>
+                      <CardTitle className="text-lg">{relay.pin}</CardTitle>
+                    </div>
                     {/* <Toggle
                       id={`toggle-${relay.id}`}
                       variant="outline"
@@ -358,7 +595,7 @@ function DashboardPage() {
                       pressed={isOn}
                       disabled={!isFirebaseConnected || isPending}
                       onPressedChange={(pressed) => handleRelayToggle(relay.id, pressed)}
-                      aria-label={`${relay.name} power`}
+                      aria-label={`${displayName} power`}
                       className={cn(
                         'h-9 w-9 rounded-lg border transition-all duration-200',
                         isOn

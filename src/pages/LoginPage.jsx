@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { ArrowRightIcon } from '@phosphor-icons/react'
-import heroImg from '../assets/hero.png'
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import {
@@ -55,30 +54,17 @@ function LoginPage() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-background px-4 py-10 text-foreground sm:px-6">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-2xl border bg-card shadow-2xl md:grid-cols-2">
-        <section className="flex flex-col justify-between gap-10 bg-muted/40 p-8 sm:p-10">
-          <div className="flex flex-col gap-3">
-            <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              ESP32 Control
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Relay System
-            </h1>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Securely monitor your device and control each relay in real time.
-            </p>
-          </div>
-          <img
-            src={heroImg}
-            alt="Layered relay module illustration"
-            className="mx-auto w-full max-w-sm"
-          />
-        </section>
-
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border bg-card shadow-2xl">
         <section className="flex items-center p-8 sm:p-10">
           <div className="mx-auto w-full max-w-sm">
             <div className="mb-7 flex flex-col gap-2">
-              <h2 className="text-2xl font-semibold tracking-tight">Sign in</h2>
+              <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                ESP32 Control
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+              <p className="text-sm text-muted-foreground">
+                Monitor your device and control each relay in real time.
+              </p>
             </div>
 
             <form onSubmit={handleLogin}>
