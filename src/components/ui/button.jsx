@@ -52,7 +52,4 @@ function Button({
   )
 }
 
-/* Keep the variant helper public alongside the component. */
-/* eslint-disable react-refresh/only-export-components */
 export { Button, buttonVariants }
-/* eslint-enable react-refresh/only-export-components */

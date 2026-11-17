@@ -1,3 +1,4 @@
+import * as React from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "cn"
 
@@ -232,8 +233,6 @@ function Toaster({
 const createToastManager = ToastPrimitive.createToastManager
 const useToastManager = ToastPrimitive.useToastManager
 
-/* These UI exports intentionally include non-component helpers alongside components. */
-/* eslint-disable react-refresh/only-export-components */
 export {
   Toaster,
   Toast,
@@ -249,4 +248,3 @@ export {
   toast,
   useToastManager,
 }
-/* eslint-enable react-refresh/only-export-components */

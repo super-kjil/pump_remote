@@ -70,8 +70,6 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    // Sync initial state from Embla; subsequent changes arrive through its events.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
@@ -214,7 +212,4 @@ function CarouselNext({
   )
 }
 
-/* Keep the context hook public alongside the carousel components. */
-/* eslint-disable react-refresh/only-export-components */
 export { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext, useCarousel };
-/* eslint-enable react-refresh/only-export-components */

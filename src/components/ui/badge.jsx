@@ -45,7 +45,4 @@ function Badge({
   });
 }
 
-/* Keep the variant helper public alongside the component. */
-/* eslint-disable react-refresh/only-export-components */
 export { Badge, badgeVariants }
-/* eslint-enable react-refresh/only-export-components */

@@ -11,10 +11,9 @@ import {
 } from '../components/ui/card'
 import { Skeleton } from '../components/ui/skeleton'
 import { Toggle } from '../components/ui/toggle'
-import { Button } from '../components/ui/button'
 import { db } from '../firebase'
 import { useAuth } from '../contexts/auth-context'
-import { Menu, Power, X } from 'lucide-react'
+import { Power } from 'lucide-react'
 import { cn } from '../lib/utils';
 
 
@@ -73,12 +72,12 @@ function DashboardSkeleton() {
           <Skeleton aria-hidden="true" className="h-9 w-64 max-w-full" />
           <Skeleton aria-hidden="true" className="h-4 w-full max-w-sm" />
         </div>
-        <Skeleton aria-hidden="true" className="hidden h-6 w-36 sm:block" />
+        <Skeleton aria-hidden="true" className="h-6 w-36" />
       </header>
 
       <section
         aria-hidden="true"
-        className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         {Array.from({ length: 4 }, (_, index) => (
           <Card key={index}>
@@ -91,12 +90,12 @@ function DashboardSkeleton() {
       </section>
 
       <section className="flex flex-col gap-4">
-        <div className="hidden flex-col gap-2 sm:flex">
+        <div className="flex flex-col gap-2">
           <Skeleton aria-hidden="true" className="h-6 w-24" />
           <Skeleton aria-hidden="true" className="h-4 w-56 max-w-full" />
         </div>
 
-        <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2">
+        <div aria-hidden="true" className="grid gap-4 md:grid-cols-2">
           {RELAYS.map((relay) => (
             <Card key={relay.id}>
               <CardHeader className="gap-3">
@@ -132,28 +131,11 @@ function DashboardPage() {
   })
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(null)
   const [pendingRelays, setPendingRelays] = useState([])
-  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false)
   const [hasLoadedRelays, setHasLoadedRelays] = useState(false)
   const [hasLoadedStatus, setHasLoadedStatus] = useState(false)
   const [listenerErrors, setListenerErrors] = useState({})
   const [actionError, setActionError] = useState('')
   const dashboardError = actionError || Object.values(listenerErrors).find(Boolean)
-  const databaseStatus =
-    isFirebaseConnected === null
-      ? 'Connecting…'
-      : isFirebaseConnected
-        ? 'Database connected'
-        : 'Database offline'
-  const statusItems = [
-    { label: 'Database', value: databaseStatus },
-    { label: 'ESP32', value: espStatus.online ? 'Online' : 'Offline' },
-    { label: 'IP address', value: espStatus.ip },
-    { label: 'Uptime', value: formatUptime(espStatus.uptime) },
-    {
-      label: 'Wi-Fi signal',
-      value: espStatus.rssi === '—' ? '—' : `${espStatus.rssi} dBm`,
-    },
-  ]
 
   useEffect(() => {
     const connectionRef = ref(db, '.info/connected')
@@ -255,64 +237,40 @@ function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 lg:px-8">
-      <header className="relative flex items-start justify-between gap-4 sm:items-end">
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="hidden text-sm font-medium text-muted-foreground sm:block">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium text-muted-foreground">
             Device control
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">
             Relay dashboard
           </h1>
-          <p className="hidden text-sm text-muted-foreground sm:block">
+          <p className="text-sm text-muted-foreground">
             Monitor your ESP32 and control its connected relays.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge
-            className="hidden sm:inline-flex"
-            variant={isFirebaseConnected ? 'secondary' : 'outline'}
-            aria-live="polite"
-          >
-            <span
-              aria-hidden="true"
-              className={`size-2 rounded-full ${isFirebaseConnected ? 'bg-lime-500' : 'bg-red-500'
-                }`}
-            />
-            {databaseStatus}
-          </Badge>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            className="sm:hidden"
-            aria-label={isStatusMenuOpen ? 'Hide device status' : 'Show device status'}
-            aria-expanded={isStatusMenuOpen}
-            aria-controls="mobile-device-status"
-            onClick={() => setIsStatusMenuOpen((isOpen) => !isOpen)}
-          >
-            {isStatusMenuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-          </Button>
-        </div>
-        {isStatusMenuOpen ? (
-          <section
-            id="mobile-device-status"
-            aria-label="Device status"
-            className="absolute right-0 top-full z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-card p-4 shadow-xl sm:hidden"
-          >
-            <dl className="grid gap-3 text-sm">
-              {statusItems.map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between gap-4"
-                >
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="text-right font-medium">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
+        <Badge
+          variant={isFirebaseConnected ? 'secondary' : 'outline'}
+          aria-live="polite"
+        >
+          {/* <span
+            aria-hidden="true"
+            className={`size-2 rounded-full ${
+              isFirebaseConnected ? 'bg-primary' : 'bg-muted-foreground'
+            }`}
+          /> */}
+          <span
+            aria-hidden="true"
+            className={`size-2 rounded-full ${isFirebaseConnected ? 'bg-lime-500' : 'bg-red-500'
+              }`}
+          />
+          {isFirebaseConnected === null
+            ? 'Connecting…'
+            : isFirebaseConnected
+              ? 'Database connected'
+              : 'Database offline'}
+        </Badge>
       </header>
 
       {dashboardError ? (
@@ -324,7 +282,7 @@ function DashboardPage() {
 
       <section
         aria-label="ESP32 status"
-        className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         <StatusCard title="ESP32 status">
           {/* <Badge variant={espStatus.online ? 'secondary' : 'outline'}>
@@ -349,7 +307,7 @@ function DashboardPage() {
       </section>
 
       <section aria-labelledby="relays-heading" className="flex flex-col gap-4">
-        <div className="hidden flex-col gap-1 sm:flex">
+        <div className="flex flex-col gap-1">
           <h2 id="relays-heading" className="text-xl font-semibold tracking-tight">
             Relays
           </h2>
