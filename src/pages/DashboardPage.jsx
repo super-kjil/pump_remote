@@ -15,9 +15,19 @@ import { Skeleton } from '../components/ui/skeleton'
 import { Toggle } from '../components/ui/toggle'
 import { db } from '../firebase'
 import { useAuth } from '../contexts/auth-context'
-import { Check, Menu, Pencil, Power, X } from 'lucide-react'
-import { cn } from '../lib/utils';
-
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Menu,
+  Pencil,
+  Power,
+  X,
+} from 'lucide-react'
+import { cn } from '../lib/utils'
 
 const RELAYS = [
   { id: 'r1', name: 'Relay 1', pin: 'GPIO 12' },
@@ -58,6 +68,55 @@ function relayEmoji(relayId, relayNames) {
   const value = relayNames?.emoji?.[relayId]
   if (typeof value !== 'string') return ''
   return DEVICE_EMOJIS.some((item) => item.emoji === value) ? value : ''
+}
+
+function getSavedRelayOrder(userId) {
+  try {
+    const savedOrder = window.localStorage.getItem(`relay-order:${userId}`)
+    if (!savedOrder) return RELAYS
+
+    const relayIds = JSON.parse(savedOrder)
+    const validRelayIds = new Set(RELAYS.map((relay) => relay.id))
+    if (
+      !Array.isArray(relayIds) ||
+      relayIds.length !== RELAYS.length ||
+      new Set(relayIds).size !== RELAYS.length ||
+      !relayIds.every((relayId) => validRelayIds.has(relayId))
+    ) {
+      console.error('Saved relay order is invalid; using the default order.')
+      return RELAYS
+    }
+
+    return relayIds.map((relayId) =>
+      RELAYS.find((relay) => relay.id === relayId)
+    )
+  } catch (error) {
+    console.error('Could not read the saved relay order:', error)
+    return RELAYS
+  }
+}
+
+function getSavedHiddenRelayIds(userId) {
+  try {
+    const savedIds = window.localStorage.getItem(`hidden-relays:${userId}`)
+    if (!savedIds) return []
+
+    const relayIds = JSON.parse(savedIds)
+    const validRelayIds = new Set(RELAYS.map((relay) => relay.id))
+    if (
+      !Array.isArray(relayIds) ||
+      new Set(relayIds).size !== relayIds.length ||
+      !relayIds.every((relayId) => validRelayIds.has(relayId))
+    ) {
+      console.error('Saved hidden relays are invalid; showing all relays.')
+      return []
+    }
+
+    return relayIds
+  } catch (error) {
+    console.error('Could not read the saved hidden relays:', error)
+    return []
+  }
 }
 
 function formatUptime(seconds) {
@@ -118,21 +177,26 @@ function DashboardSkeleton() {
 
         <div aria-hidden="true" className="grid gap-4 md:grid-cols-2">
           {RELAYS.map((relay) => (
-            <Card key={relay.id}>
-              <CardHeader className="gap-3">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-5 w-28" />
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <Skeleton className="h-px w-full" />
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Skeleton className="h-4 w-12" />
-                    <Skeleton className="h-3 w-44 max-w-full" />
+            <Card key={relay.id} className="min-h-48 gap-0 py-0">
+              <CardHeader className="flex-1 justify-between gap-6 px-5 pt-5 pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Skeleton className="h-5 w-28" />
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-5 w-12 rounded-full" />
+                    <Skeleton className="h-7 w-24 rounded-md" />
                   </div>
-                  <Skeleton className="h-5 w-9 rounded-full" />
                 </div>
-              </CardContent>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="size-9 rounded-lg" />
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-3 w-16" />
+                      <Skeleton className="h-6 w-24" />
+                    </div>
+                  </div>
+                  <Skeleton className="size-12 rounded-xl" />
+                </div>
+              </CardHeader>
             </Card>
           ))}
         </div>
@@ -144,6 +208,13 @@ function DashboardSkeleton() {
 function DashboardPage() {
   const { user } = useAuth()
   const [relayState, setRelayState] = useState({})
+  const [relayOrder, setRelayOrder] = useState(() => getSavedRelayOrder(user.uid))
+  const [hiddenRelayIds, setHiddenRelayIds] = useState(() =>
+    getSavedHiddenRelayIds(user.uid)
+  )
+  const [hiddenRelaysOpen, setHiddenRelaysOpen] = useState(false)
+  const [draggedRelayId, setDraggedRelayId] = useState(null)
+  const [dragOverRelayId, setDragOverRelayId] = useState(null)
   const [relayNames, setRelayNames] = useState({})
   const [editingRelayId, setEditingRelayId] = useState(null)
   const [nameDraft, setNameDraft] = useState('')
@@ -164,6 +235,28 @@ function DashboardPage() {
   const [actionError, setActionError] = useState('')
   const [statusOpen, setStatusOpen] = useState(false)
   const dashboardError = actionError || Object.values(listenerErrors).find(Boolean)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        `relay-order:${user.uid}`,
+        JSON.stringify(relayOrder.map((relay) => relay.id))
+      )
+    } catch (error) {
+      console.error('Could not save the relay order:', error)
+    }
+  }, [relayOrder, user.uid])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        `hidden-relays:${user.uid}`,
+        JSON.stringify(hiddenRelayIds)
+      )
+    } catch (error) {
+      console.error('Could not save the hidden relays:', error)
+    }
+  }, [hiddenRelayIds, user.uid])
 
   useEffect(() => {
     const connectionRef = ref(db, '.info/connected')
@@ -262,6 +355,13 @@ function DashboardPage() {
     return <DashboardSkeleton />
   }
 
+  const visibleRelays = relayOrder.filter(
+    (relay) => !hiddenRelayIds.includes(relay.id)
+  )
+  const hiddenRelays = relayOrder.filter((relay) =>
+    hiddenRelayIds.includes(relay.id)
+  )
+
   const startRename = (relay) => {
     setActionError('')
     setEditingRelayId(relay.id)
@@ -271,6 +371,18 @@ function DashboardPage() {
   const cancelRename = () => {
     setEditingRelayId(null)
     setNameDraft('')
+  }
+
+  const hideRelay = (relayId) => {
+    setHiddenRelayIds((current) =>
+      current.includes(relayId) ? current : [...current, relayId]
+    )
+    setEmojiPickerRelayId((current) => (current === relayId ? null : current))
+    if (editingRelayId === relayId) cancelRename()
+  }
+
+  const restoreRelay = (relayId) => {
+    setHiddenRelayIds((current) => current.filter((id) => id !== relayId))
   }
 
   const saveRelayName = async (relay) => {
@@ -337,6 +449,62 @@ function DashboardPage() {
     } finally {
       setPendingRelays((current) => current.filter((id) => id !== relayId))
     }
+  }
+
+  const moveRelay = (relayId, offset) => {
+    setRelayOrder((current) => {
+      const visibleRelays = current.filter(
+        (relay) => !hiddenRelayIds.includes(relay.id)
+      )
+      const currentIndex = visibleRelays.findIndex(
+        (relay) => relay.id === relayId
+      )
+      const nextIndex = currentIndex + offset
+      if (
+        currentIndex < 0 ||
+        nextIndex < 0 ||
+        nextIndex >= visibleRelays.length
+      ) {
+        return current
+      }
+
+      const next = [...visibleRelays]
+      const [movedRelay] = next.splice(currentIndex, 1)
+      next.splice(nextIndex, 0, movedRelay)
+      let visibleIndex = 0
+      return current.map((relay) =>
+        hiddenRelayIds.includes(relay.id) ? relay : next[visibleIndex++]
+      )
+    })
+  }
+
+  const handleRelayDrop = (event, targetRelayId) => {
+    event.preventDefault()
+    const sourceRelayId = event.dataTransfer.getData('text/plain')
+    if (sourceRelayId && sourceRelayId !== targetRelayId) {
+      setRelayOrder((current) => {
+        const visibleRelays = current.filter(
+          (relay) => !hiddenRelayIds.includes(relay.id)
+        )
+        const sourceIndex = visibleRelays.findIndex(
+          (relay) => relay.id === sourceRelayId
+        )
+        const targetIndex = visibleRelays.findIndex(
+          (relay) => relay.id === targetRelayId
+        )
+        if (sourceIndex < 0 || targetIndex < 0) return current
+
+        const next = [...visibleRelays]
+        const [movedRelay] = next.splice(sourceIndex, 1)
+        next.splice(targetIndex, 0, movedRelay)
+        let visibleIndex = 0
+        return current.map((relay) =>
+          hiddenRelayIds.includes(relay.id) ? relay : next[visibleIndex++]
+        )
+      })
+    }
+    setDraggedRelayId(null)
+    setDragOverRelayId(null)
   }
 
   return (
@@ -435,8 +603,9 @@ function DashboardPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {RELAYS.map((relay) => {
+        {visibleRelays.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+          {visibleRelays.map((relay, relayIndex) => {
             const isOn = isRelayOn(relayState[relay.id])
             const isPending = pendingRelays.includes(relay.id)
             const displayName = relayDisplayName(relay, relayNames)
@@ -447,9 +616,22 @@ function DashboardPage() {
             const isSavingEmoji = savingEmojiId === relay.id
 
             return (
-              <Card key={relay.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between gap-2">
+              <Card
+                key={relay.id}
+                className={cn(
+                  'min-h-48 gap-0 py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
+                  isOn && 'ring-lime-500/30',
+                  draggedRelayId === relay.id && 'scale-[0.98] opacity-50',
+                  dragOverRelayId === relay.id &&
+                    draggedRelayId !== relay.id &&
+                    'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                )}
+                onDragOver={(event) => event.preventDefault()}
+                onDragEnter={() => setDragOverRelayId(relay.id)}
+                onDrop={(event) => handleRelayDrop(event, relay.id)}
+              >
+                <CardHeader className="gap-0 px-5 pt-5 pb-3">
+                  <div className="flex items-center justify-between gap-3">
                     {isEditing ? (
                       <form
                         className="flex min-w-0 flex-1 items-center gap-1"
@@ -493,10 +675,10 @@ function DashboardPage() {
                         </Button>
                       </form>
                     ) : (
-                      <div className="flex min-w-0 items-center gap-1">
-                        <CardDescription className="truncate">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <CardTitle className="truncate text-base font-semibold">
                           {displayName}
-                        </CardDescription>
+                        </CardTitle>
                         <Button
                           type="button"
                           variant="ghost"
@@ -509,16 +691,80 @@ function DashboardPage() {
                         </Button>
                       </div>
                     )}
-                    <Badge className={
-                      isOn ? 'border-lime-500/30 bg-lime-500/10 text-lime-600 dark:text-lime-400'
-                        : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
-                    }
-                    >
-                      {isOn ? 'On' : 'Off'}
-                    </Badge>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge
+                        className={cn(
+                          'gap-1.5 px-2.5 py-1',
+                          isOn
+                            ? 'border-lime-500/30 bg-lime-500/10 text-lime-600 dark:text-lime-400'
+                            : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'size-1.5 rounded-full',
+                            isOn ? 'bg-lime-500' : 'bg-red-500'
+                          )}
+                        />
+                        {isOn ? 'On' : 'Off'}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Hide ${displayName}`}
+                        title="Hide card"
+                        onClick={() => hideRelay(relay.id)}
+                      >
+                        <EyeOff />
+                      </Button>
+                      <div className="flex items-center rounded-lg border bg-muted/40 p-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          draggable
+                          aria-label={`Drag to reorder ${displayName}`}
+                          title="Drag to reorder"
+                          className="cursor-grab rounded-md active:cursor-grabbing"
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData('text/plain', relay.id)
+                            setDraggedRelayId(relay.id)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedRelayId(null)
+                            setDragOverRelayId(null)
+                          }}
+                        >
+                          <GripVertical />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Move ${displayName} up`}
+                          disabled={relayIndex === 0}
+                          onClick={() => moveRelay(relay.id, -1)}
+                        >
+                          <ArrowUp />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Move ${displayName} down`}
+                          disabled={relayIndex === visibleRelays.length - 1}
+                          onClick={() => moveRelay(relay.id, 1)}
+                        >
+                          <ArrowDown />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-
-
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col justify-center gap-4 px-5 pt-3 pb-5">
                   {isPickingEmoji ? (
                     <div className="grid grid-cols-7 gap-1" role="listbox" aria-label={`Emoji for ${displayName}`}>
                       <Button
@@ -554,9 +800,8 @@ function DashboardPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 items-center gap-2">
                       <Button
-                        type="button"
                         variant="outline"
-                        size="icon"
+                        // size="icon-lg"
                         aria-label={
                           emoji
                             ? `Change emoji for ${displayName}`
@@ -569,52 +814,107 @@ function DashboardPage() {
                             current === relay.id ? null : relay.id
                           )
                         }
-                        className="text-lg"
+                        className="size-14 rounded-xl text-4xl"
                       >
                         {emoji || '＋'}
                       </Button>
-                      <CardTitle className="text-lg">{relay.pin}</CardTitle>
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+                          Output pin
+                        </span>
+                        <CardTitle className="truncate text-xl font-semibold tracking-tight">
+                          {relay.pin}
+                        </CardTitle>
+                      </div>
                     </div>
-                    {/* <Toggle
-                      id={`toggle-${relay.id}`}
-                      variant="outline"
-                      size="sm"
-                      pressed={isOn}
-                      disabled={!isFirebaseConnected || isPending}
-                      onPressedChange={(pressed) =>
-                        handleRelayToggle(relay.id, pressed)
-                      }
-                      aria-label={`${relay.name} power`}
-                    >
-                      {isOn ? <Power /> : <Power />}
-                    </Toggle> */}
-                    <Toggle
-                      id={`toggle-${relay.id}`}
-                      variant="ghost"
-                      size="sm"
-                      pressed={isOn}
-                      disabled={!isFirebaseConnected || isPending}
-                      onPressedChange={(pressed) => handleRelayToggle(relay.id, pressed)}
-                      aria-label={`${displayName} power`}
-                      className={cn(
-                        'h-9 w-9 rounded-lg border transition-all duration-200',
-                        isOn
-                          ? 'border-green-500/30 bg-green-500 text-white hover:bg-green-600 data-[state=on]:bg-green-500 data-[state=on]:text-white'
-                          : 'border-muted bg-muted text-muted-foreground hover:bg-muted/80 data-[state=off]:bg-muted',
-                        'disabled:pointer-events-none disabled:opacity-50'
-                      )}
-                    >
-                      <Power className={cn(
-                        'h-4 w-4 transition-transform duration-200',
-                        isOn && 'scale-110'
-                      )} />
-                    </Toggle>
+                    <div className="flex shrink-0 flex-col items-center gap-1.5">
+                      <Toggle
+                        id={`toggle-${relay.id}`}
+                        variant="ghost"
+                        size="lg"
+                        pressed={isOn}
+                        disabled={!isFirebaseConnected || isPending}
+                        onPressedChange={(pressed) =>
+                          handleRelayToggle(relay.id, pressed)
+                        }
+                        aria-label={`${displayName} power`}
+                        className={cn(
+                          'size-12 min-w-12 rounded-xl border transition-all duration-200',
+                          isOn
+                            ? 'border-lime-500/30 bg-lime-500 text-white hover:bg-lime-600 data-[state=on]:bg-lime-500 data-[state=on]:text-white'
+                            : 'border-border bg-muted text-muted-foreground hover:bg-muted/80 data-[state=off]:bg-muted',
+                          'disabled:pointer-events-none disabled:opacity-50'
+                        )}
+                      >
+                        <Power />
+                      </Toggle>
+                      <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                        {isOn ? 'Turn off' : 'Turn on'}
+                      </span>
+                    </div>
                   </div>
-                </CardHeader>
+                </CardContent>
               </Card>
             )
           })}
-        </div>
+          </div>
+        ) : (
+          <Card className="border-dashed py-2">
+            <CardHeader className="items-center gap-2 py-6 text-center">
+              <CardTitle className="text-base">All relay cards are hidden</CardTitle>
+              <CardDescription>
+                Open hidden relays below to show a card again.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
+
+        {hiddenRelays.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              aria-expanded={hiddenRelaysOpen}
+              onClick={() => setHiddenRelaysOpen((open) => !open)}
+            >
+              {hiddenRelaysOpen ? (
+                <EyeOff data-icon="inline-start" />
+              ) : (
+                <Eye data-icon="inline-start" />
+              )}
+              {hiddenRelaysOpen ? 'Hide hidden relays' : 'Show hidden relays'}
+              <Badge variant="secondary">{hiddenRelays.length}</Badge>
+            </Button>
+            {hiddenRelaysOpen ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {hiddenRelays.map((relay) => (
+                  <Card
+                    key={relay.id}
+                    className="flex-row items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <CardHeader className="min-w-0 flex-1 gap-1 p-0">
+                      <CardTitle className="truncate text-sm">
+                        {relayDisplayName(relay, relayNames)}
+                      </CardTitle>
+                      <CardDescription>{relay.pin}</CardDescription>
+                    </CardHeader>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => restoreRelay(relay.id)}
+                    >
+                      <Eye data-icon="inline-start" />
+                      Show
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </main>
   )
