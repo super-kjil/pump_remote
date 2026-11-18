@@ -551,8 +551,8 @@ function DashboardPage() {
           {isFirebaseConnected === null
             ? 'Connecting…'
             : isFirebaseConnected
-              ? 'Database connected'
-              : 'Database offline'}
+              ? 'Connected'
+              : 'Offline'}
           </Badge>
         </div>
       </header>
@@ -677,7 +677,9 @@ function DashboardPage() {
                     ) : (
                       <div className="flex min-w-0 items-center gap-1.5">
                         <CardTitle className="truncate text-base font-semibold">
-                          {displayName}
+                          <span className="bg-primary/80 text-primary-foreground px-2 py-1 rounded-md">
+                            {displayName}
+                          </span>
                         </CardTitle>
                         <Button
                           type="button"
